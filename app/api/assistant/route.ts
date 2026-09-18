@@ -1,14 +1,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+let aiClient: GoogleGenAI | null = null;
+function getAI(): GoogleGenAI | null {
+  if (!aiClient && process.env.GEMINI_API_KEY) {
+    aiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
   }
-});
+  return aiClient;
+}
 
 // Helper to fetch data from our own API routes safely
 async function internalFetch(path: string) {
@@ -112,6 +118,13 @@ export async function POST(req: Request) {
     ];
     let response: any = null;
     let lastError: any = null;
+
+    const ai = getAI();
+    if (!ai) {
+      return NextResponse.json({
+        text: "مرحباً بك! يعمل النظام حالياً بكفاءة كاملة عبر **المحرك الرياضي البايزي والمحاكاة الكمية للسباقات**.\n\nيمكنك الاعتماد مباشرة على استراتيجيات الأهداف الخمسة المحددة للسباق (Quinté+ Désordre, Tiercé Ordre, Bonus 3 & 4 & 5) في شاشة تحليل السباق."
+      });
+    }
 
     for (const modelName of modelsToTry) {
       let attempts = 0;

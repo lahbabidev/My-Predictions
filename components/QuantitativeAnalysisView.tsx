@@ -29,13 +29,17 @@ interface QuantitativeAnalysisViewProps {
     goldenBase?: number;
     profitStrategy?: string;
   } | null;
+  onGeneratePrediction?: () => void;
+  predictionLoading?: boolean;
 }
 
 export default function QuantitativeAnalysisView({
   metrics,
   raceInfo,
   scenario,
-  prediction
+  prediction,
+  onGeneratePrediction,
+  predictionLoading
 }: QuantitativeAnalysisViewProps) {
   const [subTab, setSubTab] = useState<"desordre_matrix" | "bayesian" | "matrix">("desordre_matrix");
   const [sortField, setSortField] = useState<keyof HorseAnalysisMetrics>("quantitativeScore");
@@ -239,9 +243,21 @@ export default function QuantitativeAnalysisView({
                   مقارنة رقمية دقيقة لمؤشرات السرعة، القوة، احتمالات مونتي كارلو، ومجال الثقة 95% لكافة المتسابقين.
                 </p>
               </div>
-              <span className="text-xs text-neutral-400 font-medium self-start sm:self-auto">
-                انقر على أي عمود للترتيب
-              </span>
+              <div className="flex items-center gap-3 self-start sm:self-auto">
+                {onGeneratePrediction && (
+                  <button
+                    onClick={onGeneratePrediction}
+                    disabled={predictionLoading}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{predictionLoading ? "جارِ التحليل الحسابي..." : "توليد التوقعات الرقمية"}</span>
+                  </button>
+                )}
+                <span className="text-xs text-neutral-400 font-medium">
+                  انقر على أي عمود للترتيب
+                </span>
+              </div>
             </div>
 
             <div className="overflow-x-auto">

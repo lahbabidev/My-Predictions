@@ -10,7 +10,7 @@ interface PredictionData {
   goldenBase?: number;
   bases?: number[];
   associes?: number[];
-  tocardSauveur?: number;
+  tocardSauveur?: number | null;
   quinteDesordrePicks?: number[];
   [key: string]: any;
 }

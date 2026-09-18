@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PMUParticipant, PMURace } from "@/types/pmu";
-import { ArrowRight, Bot, Calendar, Clock, Trophy, CheckCircle2, ChevronRight, Loader2, AlertCircle, Users, Flame, BookOpen, Compass, BarChart2, Cpu, ShieldCheck, Zap, Notebook, Scale, Rocket, Sparkles, History, AlertTriangle, Gauge, Copy, Check, Coins, Layers, ShieldAlert, CheckCircle } from "lucide-react";
+import { ArrowRight, Bot, Calendar, Clock, Trophy, CheckCircle2, ChevronRight, Loader2, AlertCircle, Users, Flame, BookOpen, Compass, BarChart2, Cpu, ShieldCheck, Zap, Notebook, Scale, Rocket, Sparkles, History, AlertTriangle, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { evaluateBetOutcome, translateOutcome, evaluateTargetedBets, TargetedBetOutcomes } from "@/lib/betEvaluator";
@@ -42,6 +42,15 @@ interface RaceData {
 }
 
 interface PredictionData {
+  id?: string;
+  date?: string;
+  reunion?: string;
+  course?: string;
+  raceName?: string;
+  hippodrome?: string;
+  discipline?: string;
+  terrain?: string;
+  distance?: number;
   analysis: string;
   prediction: number[];
   tacticalAnalysis?: string;
@@ -51,7 +60,7 @@ interface PredictionData {
   quinteDesordreAnalysis?: string;
   bases?: number[];
   associes?: number[];
-  tocardSauveur?: number;
+  tocardSauveur?: number | null;
   quinteDesordrePicks?: number[];
   desordreConfidenceScore?: number;
   targetedStrategies?: TargetedBetStrategy;
@@ -66,7 +75,19 @@ interface PredictionData {
   lastUpdated?: number;
   tacticalScenario?: any;
   quantitativeRatings?: any[];
-  bonusCombinations?: any;
+  bonusCombinations?: {
+    bonus3Picks: number[];
+    bonus4Picks: number[];
+    bonus5Picks: number[];
+    weightedCombinations?: Array<{
+      label: string;
+      combination: number[];
+      tierceOrdre?: number[];
+      confidence?: number;
+      evPotential?: string;
+      type?: string;
+    }>;
+  };
   profitMaximizerInsights?: any;
   syntheseUltime?: any[];
   ensemblePathway?: string;
@@ -74,6 +95,11 @@ interface PredictionData {
   actualArrival?: number[];
   status?: string;
   matchCount?: number;
+  actualStake?: number;
+  actualROI?: number;
+  actualPnl?: number;
+  actualPayout?: number;
+  targetOutcomes?: TargetedBetOutcomes;
 }
 
 interface ExpertPrediction {
@@ -172,18 +198,6 @@ export default function RaceDetail() {
   const [proMode, setProMode] = useState(false);
   const [selectedEnsemblePathway, setSelectedEnsemblePathway] = useState<EnsemblePathwayId>("balanced");
   const [savedToast, setSavedToast] = useState(false);
-  const [copiedBonusTicketId, setCopiedBonusTicketId] = useState<string | null>(null);
-
-  const handleCopyBonusTicket = (id: string, ticket: number[]) => {
-    try {
-      const ticketStr = ticket.join(" - ");
-      navigator.clipboard.writeText(ticketStr);
-      setCopiedBonusTicketId(id);
-      setTimeout(() => setCopiedBonusTicketId(null), 2500);
-    } catch (e) {
-      console.error("Clipboard copy failed", e);
-    }
-  };
 
   // Load prediction from centralized storage on mount
   useEffect(() => {
@@ -255,189 +269,6 @@ export default function RaceDetail() {
     return activeEnsembleProfile?.targetedStrategies || prediction?.targetedStrategies || quinteSystem?.targetedStrategies;
   }, [activeEnsembleProfile, prediction, quinteSystem]);
 
-  // Rigorous quantitative calculation of Weighted Bonus 3 & Bonus 4 combinations
-  const calculatedWeightedBonusCards = useMemo(() => {
-    if (!analyzedParticipants || analyzedParticipants.length === 0) return [];
-
-    // Helper: Estimate individual horse's probability of finishing in the top 5
-    const getTop5Prob = (horseNum: number): number => {
-      const m = analyzedParticipants.find(p => p.numPmu === horseNum);
-      if (!m) return 0.25;
-      const baseTop3 = (m.top3Prob || 30) / 100;
-      const power = (m.predictivePowerScore || m.quantitativeScore || 70) / 100;
-      const ferrageBonus = m.ferrageCode === "D4" ? 0.08 : m.ferrageCode === "DP" || m.ferrageCode === "DA" ? 0.04 : -0.05;
-      const fatiguePenalty = m.fatigueMetrics && m.fatigueMetrics.energyReservePct < 50 ? -0.10 : 0.02;
-      
-      const prob = Math.min(0.94, Math.max(0.12, baseTop3 * 1.32 + power * 0.20 + ferrageBonus + fatiguePenalty));
-      return prob;
-    };
-
-    // Helper: Calculate exact compound probabilities for a 5-horse ticket using Poisson-Binomial distribution
-    const computeCombinatorialProbabilities = (ticketHorses: number[]) => {
-      const probs = ticketHorses.map(getTop5Prob);
-      const n = probs.length;
-      let dp = new Array(n + 1).fill(0);
-      dp[0] = 1.0;
-
-      for (let i = 0; i < n; i++) {
-        const p = probs[i];
-        const nextDp = new Array(n + 1).fill(0);
-        for (let k = 0; k <= i + 1; k++) {
-          nextDp[k] = (k > 0 ? dp[k - 1] * p : 0) + dp[k] * (1 - p);
-        }
-        dp = nextDp;
-      }
-
-      const pExact5 = dp[5] || 0;
-      const pExact4 = dp[4] || 0;
-      const pExact3 = dp[3] || 0;
-
-      const pAtLeast4 = pExact4 + pExact5;
-      const pAtLeast3 = pExact3 + pExact4 + pExact5;
-      
-      const bonusCoverageIfIncomplete = pExact5 < 1 ? (pExact4 + pExact3) / (1 - pExact5) : 0.95;
-
-      return {
-        bonus4Prob: Math.round(pAtLeast4 * 100),
-        bonus3Prob: Math.round(pAtLeast3 * 100),
-        desordreProb: Math.round(pExact5 * 100),
-        bonusCoverageIfIncomplete: Math.round(Math.min(99, bonusCoverageIfIncomplete * 100)),
-      };
-    };
-
-    // Sort participants by various quantitative signals
-    const sortedByPower = [...analyzedParticipants].sort((a, b) => (b.predictivePowerScore || b.quantitativeScore) - (a.predictivePowerScore || a.quantitativeScore));
-    const sortedByTop3Prob = [...analyzedParticipants].sort((a, b) => (b.top3Prob || 0) - (a.top3Prob || 0));
-    const sortedByPathfinding = [...analyzedParticipants].sort((a, b) => (b.pathfindingMetrics?.pathfindingOrdreScore || 0) - (a.pathfindingMetrics?.pathfindingOrdreScore || 0));
-    
-    // Find key tactical horses
-    const goldenBaseNum = activeGoldenBase || sortedByPower[0]?.numPmu;
-    const tocardSauveurNum = prediction?.tocardSauveur || quinteSystem?.tocardSauveur?.numPmu || analyzedParticipants.find(p => p.tacticalRole === "TOCARD_SPECULATIF" || (p.pmuOdds ?? 0) >= 15)?.numPmu;
-    
-    // 1. Ticket 1: توليفة Bonus 4 الذهبية الفائقة (Ultra-Safe Core)
-    const base1 = goldenBaseNum;
-    const safeAssociates = sortedByTop3Prob.filter(p => p.numPmu !== base1).slice(0, 4).map(p => p.numPmu);
-    const ticket1Horses = [base1, ...safeAssociates].slice(0, 5);
-    const stats1 = computeCombinatorialProbabilities(ticket1Horses);
-
-    // 2. Ticket 2: توليفة Bonus 3 التأمينية الممتدة (Top Place Regularity)
-    const ticket2Horses = sortedByTop3Prob.slice(0, 5).map(p => p.numPmu);
-    const stats2 = computeCombinatorialProbabilities(ticket2Horses);
-
-    // 3. Ticket 3: توليفة Bonus 4 التكتيكية (EV+ المسار والسرعة)
-    const pathLeader = sortedByPathfinding.find(p => p.numPmu !== base1)?.numPmu || sortedByPower[1]?.numPmu;
-    const d4Horse = analyzedParticipants.find(p => p.ferrageCode === "D4" && p.numPmu !== base1 && p.numPmu !== pathLeader)?.numPmu || sortedByPower[2]?.numPmu;
-    const remainingPower = sortedByPower.filter(p => ![base1, pathLeader, d4Horse].includes(p.numPmu)).slice(0, 2).map(p => p.numPmu);
-    const ticket3Horses = [base1, pathLeader, d4Horse, ...remainingPower].filter((v, i, a) => a.indexOf(v) === i).slice(0, 5);
-    const stats3 = computeCombinatorialProbabilities(ticket3Horses);
-
-    // 4. Ticket 4: توليفة Bonus 3 & 4 الصاعقة مع التوكار المنقذ (Speculative High Yield)
-    const base2 = sortedByPower.find(p => p.numPmu !== base1)?.numPmu || sortedByTop3Prob[1]?.numPmu;
-    const ticket4Horses = [base1, base2, tocardSauveurNum, ...sortedByTop3Prob.map(p => p.numPmu)].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i).slice(0, 5);
-    const stats4 = computeCombinatorialProbabilities(ticket4Horses);
-
-    // Helper to determine color scheme based on calculated probabilities
-    const getTicketTheme = (bonus4: number, bonus3: number, isSpeculative: boolean) => {
-      if (!isSpeculative && (bonus4 >= 75 || bonus3 >= 92)) {
-        return {
-          themeName: "EMERALD_ULTRA_SAFE",
-          containerClass: "bg-gradient-to-br from-emerald-950/80 via-neutral-900/95 to-emerald-950/60 border-emerald-400/70 shadow-[0_0_20px_rgba(16,185,129,0.18)] ring-1 ring-emerald-400/30",
-          badgeClass: "bg-emerald-500 text-neutral-950 font-black border-emerald-300 shadow-sm",
-          badgeText: "🛡️ فائق الأمان (احتمالية بونص قصوى)",
-          probabilityGrade: "ممتاز (Ultra High)",
-          probNumberColor: "text-emerald-300",
-          pillBg: "bg-gradient-to-br from-emerald-400 to-emerald-600 text-neutral-950 ring-2 ring-emerald-300/60",
-          accentBorder: "border-emerald-500/30",
-        };
-      } else if (!isSpeculative && (bonus4 >= 62 || bonus3 >= 82)) {
-        return {
-          themeName: "AMBER_BALANCED_EV",
-          containerClass: "bg-gradient-to-br from-amber-950/80 via-neutral-900/95 to-amber-950/60 border-amber-400/70 shadow-[0_0_20px_rgba(245,158,11,0.18)] ring-1 ring-amber-400/30",
-          badgeClass: "bg-amber-400 text-neutral-950 font-black border-amber-300 shadow-sm",
-          badgeText: "⚖️ عائد متوازن (Optimal EV)",
-          probabilityGrade: "مرتفع جداً (Very High)",
-          probNumberColor: "text-amber-300",
-          pillBg: "bg-gradient-to-br from-amber-300 via-amber-400 to-amber-500 text-neutral-950 ring-2 ring-amber-300/60",
-          accentBorder: "border-amber-500/30",
-        };
-      } else {
-        return {
-          themeName: "FUCHSIA_SPECULATIVE",
-          containerClass: "bg-gradient-to-br from-purple-950/80 via-neutral-900/95 to-fuchsia-950/60 border-fuchsia-400/70 shadow-[0_0_20px_rgba(232,121,249,0.18)] ring-1 ring-fuchsia-400/30",
-          badgeClass: "bg-fuchsia-500 text-white font-black border-fuchsia-300 shadow-sm",
-          badgeText: "🔥 عوائد مضاعفة (مفاجأة التوكار المنقذ)",
-          probabilityGrade: "مردود مضاعف (High Multiplier)",
-          probNumberColor: "text-fuchsia-300",
-          pillBg: "bg-gradient-to-br from-fuchsia-400 to-purple-600 text-white ring-2 ring-fuchsia-300/60",
-          accentBorder: "border-fuchsia-500/30",
-        };
-      }
-    };
-
-    return [
-      {
-        id: "bonus_4_ultra_core",
-        title: "توليفة Quinté+ Bonus 4 المرجحة بالأمان الرياضي",
-        subtitle: "تثبيت الركيزة الذهبية مع أقوى خيول التمركز لضمان الـ Bonus 4 و Bonus 3",
-        targetBet: "Quinté+ / Quarté+",
-        horses: ticket1Horses,
-        bonus4Prob: stats1.bonus4Prob,
-        bonus3Prob: stats1.bonus3Prob,
-        desordreProb: stats1.desordreProb,
-        bonusCoverageIfIncomplete: stats1.bonusCoverageIfIncomplete,
-        tacticalAdvantage: `تدمج الركيزة N°${base1} مع 4 مرافقين ذوي نسب ثبات تفوق 75%، لضمان استرداد رأس المال حتى عند حدوث مفاجأة بالمركز الأول.`,
-        recommendedFlexiStake: "10 إلى 20 درهم (Flexi 50%)",
-        expectedEv: "أمان 98% + عائد منتظم",
-        theme: getTicketTheme(stats1.bonus4Prob, stats1.bonus3Prob, false)
-      },
-      {
-        id: "bonus_3_safeguard",
-        title: "توليفة Quarté+ & Quinté+ Bonus 3 التأمينية",
-        subtitle: "تغطية شاملة لأعلى 5 خيول في مؤشر التمركز (Top 3 Probabilities)",
-        targetBet: "Quarté+ Bonus 3",
-        horses: ticket2Horses,
-        bonus4Prob: stats2.bonus4Prob,
-        bonus3Prob: stats2.bonus3Prob,
-        desordreProb: stats2.desordreProb,
-        bonusCoverageIfIncomplete: stats2.bonusCoverageIfIncomplete,
-        tacticalAdvantage: "تستهدف تحصيل جوائز Bonus 3 المتعددة باستغلال انتظام الخيول المعتادة على منصات التتويج.",
-        recommendedFlexiStake: "15 درهم (Flexi 50%)",
-        expectedEv: "تحصيل فوري لرأس المال + أرباح",
-        theme: getTicketTheme(stats2.bonus4Prob, stats2.bonus3Prob, false)
-      },
-      {
-        id: "bonus_4_pathfinding_ev",
-        title: "توليفة Bonus 4 التكتيكية (المسار الحركي والحوافر D4)",
-        subtitle: "دمج سرعة المنعطف الأخير وقوة الانطلاق للخط المستقيم لحصد الـ Bonus 4",
-        targetBet: "Quinté+ Bonus 4 / Tiercé",
-        horses: ticket3Horses,
-        bonus4Prob: stats3.bonus4Prob,
-        bonus3Prob: stats3.bonus3Prob,
-        desordreProb: stats3.desordreProb,
-        bonusCoverageIfIncomplete: stats3.bonusCoverageIfIncomplete,
-        tacticalAdvantage: "تستفيد من أفضلية الخيول الحافية D4 وسائقي النخبة لحسم المراكز الـ 4 الأولى في الأمتار الأخيرة.",
-        recommendedFlexiStake: "15 إلى 30 درهم",
-        expectedEv: "عائد مرتفع (High EV)",
-        theme: getTicketTheme(stats3.bonus4Prob, stats3.bonus3Prob, false)
-      },
-      {
-        id: "bonus_speculative_tocard",
-        title: "توليفة Bonus 3 & 4 الصاعقة مع التوكار المنقذ",
-        subtitle: "توليفة اقتناص الكوطات المرتفعة لمضاعفة قيمة جوائز البونص والكينتي",
-        targetBet: "Quinté+ Spéculatif",
-        horses: ticket4Horses,
-        bonus4Prob: stats4.bonus4Prob,
-        bonus3Prob: stats4.bonus3Prob,
-        desordreProb: stats4.desordreProb,
-        bonusCoverageIfIncomplete: stats4.bonusCoverageIfIncomplete,
-        tacticalAdvantage: `إشراك التوكار N°${tocardSauveurNum || "المنقذ"} يرفع قيمة الـ Bonus 4 و Bonus 3 بأكثر من 4 أضعاف في حال تعثر أحد المرشحين.`,
-        recommendedFlexiStake: "7.5 إلى 15 درهم (Flexi 25%)",
-        expectedEv: "أرباح قياسية مضاعفة",
-        theme: getTicketTheme(stats4.bonus4Prob, stats4.bonus3Prob, true)
-      }
-    ];
-  }, [analyzedParticipants, activeGoldenBase, prediction, quinteSystem]);
-
   useEffect(() => {
     if (!params) return;
     fetch(`/api/pmu/race?date=${date}&reunion=${reunion}&course=${course}`)
@@ -456,13 +287,13 @@ export default function RaceDetail() {
       });
   }, [date, reunion, course, params]);
 
-  const generatePrediction = async () => {
+  const generatePrediction = async (customTacticalOutputs?: any, customQuantitativeOutputs?: any) => {
     if (!data) return;
     setPredictionLoading(true);
     
     try {
       // 1. Explicit TacticalAnalysisView Outputs
-      const tacticalOutputs = tacticalScenario ? {
+      const tacticalOutputs = customTacticalOutputs || (tacticalScenario ? {
         paceType: tacticalScenario.paceType,
         paceTitle: tacticalScenario.paceTitle,
         paceDescription: tacticalScenario.paceDescription,
@@ -491,10 +322,24 @@ export default function RaceDetail() {
           straightlineAcceleration: h.pathfindingMetrics?.straightlineAccelerationScore,
           pathfindingOrdreScore: h.pathfindingMetrics?.pathfindingOrdreScore,
         })),
-      } : null;
+        d4Horses: analyzedParticipants?.filter(m => m.ferrageCode === "D4").map(m => ({
+          numPmu: m.numPmu,
+          nom: m.nom,
+          tacticalScore: m.tacticalScore,
+        })),
+        dpHorses: analyzedParticipants?.filter(m => m.ferrageCode === "DP" || m.ferrageCode === "DA").map(m => ({
+          numPmu: m.numPmu,
+          nom: m.nom,
+        })),
+        tacticalRanking: analyzedParticipants ? [...analyzedParticipants].sort((a, b) => b.tacticalScore - a.tacticalScore).slice(0, 5).map(m => ({
+          numPmu: m.numPmu,
+          nom: m.nom,
+          score: m.tacticalScore,
+        })) : [],
+      } : null);
 
       // 2. Explicit QuantitativeAnalysisView Outputs
-      const quantitativeOutputs = analyzedParticipants ? {
+      const quantitativeOutputs = customQuantitativeOutputs || (analyzedParticipants ? {
         participantsRatings: analyzedParticipants.map(m => ({
           numPmu: m.numPmu,
           nom: m.nom,
@@ -519,7 +364,11 @@ export default function RaceDetail() {
         })),
         syntheseUltime: quinteSystem?.syntheseUltime || [],
         fauxFavoris: quinteSystem?.fauxFavoris || [],
-      } : null;
+        bestSpeedChrono: analyzedParticipants ? [...analyzedParticipants].sort((a, b) => a.speedRatingKm.localeCompare(b.speedRatingKm))[0]?.numPmu : null,
+        bestClassPower: analyzedParticipants ? [...analyzedParticipants].sort((a, b) => b.classPowerIndex - a.classPowerIndex)[0]?.numPmu : null,
+        bestEV: analyzedParticipants ? [...analyzedParticipants].sort((a, b) => b.valueIndex - a.valueIndex)[0]?.numPmu : null,
+        bestProfitSafety: analyzedParticipants ? [...analyzedParticipants].sort((a, b) => b.profitSafetyScore - a.profitSafetyScore)[0]?.numPmu : null,
+      } : null);
 
       // 3. Explicit Bonus & Quinté System Outputs
       const bonusSystemOutputs = quinteSystem ? {
@@ -566,6 +415,61 @@ export default function RaceDetail() {
       const actualArrival = (hasArrival && ordreArr) ? ordreArr.map((pos: any) => pos[0]).slice(0, 5) : [];
       const isFinished = Boolean(data.info.statut !== "PROGRAMMEE" && hasArrival);
 
+      // Explicitly compute mathematical and tactical values to link digital analysis to permanent storage
+      const calculatedTocardSauveur: number | null = (result.tocardSauveur !== undefined && result.tocardSauveur !== null)
+        ? Number(result.tocardSauveur)
+        : (quinteSystem?.tocardSauveur ? quinteSystem.tocardSauveur.numPmu : null);
+
+      const calculatedGoldenBase: number = (result.goldenBase !== undefined && result.goldenBase !== null)
+        ? Number(result.goldenBase)
+        : (quinteSystem?.unbreakableBases[0]?.numPmu || tacticalScenario?.goldenBase?.numPmu || result.prediction[0]);
+
+      const calculatedBases: number[] = (Array.isArray(result.bases) && result.bases.length > 0)
+        ? result.bases.map(Number)
+        : (quinteSystem?.unbreakableBases.map(b => b.numPmu) || [calculatedGoldenBase]);
+
+      const calculatedAssocies: number[] = (Array.isArray(result.associes) && result.associes.length > 0)
+        ? result.associes.map(Number)
+        : (quinteSystem?.primeAssociés.map(a => a.numPmu) || result.prediction.slice(1, 4));
+
+      const calculatedQuinteDesordre: number[] = (Array.isArray(result.quinteDesordrePicks) && result.quinteDesordrePicks.length >= 5)
+        ? result.quinteDesordrePicks.map(Number)
+        : (quinteSystem?.extendedTop7.map(h => h.numPmu) || result.prediction.slice(0, 5));
+
+      const calculatedConfidence: number = Number(result.desordreConfidenceScore) || quinteSystem?.overallDesordreConfidence || 85;
+
+      const calculatedBonusCombinations = {
+        bonus3Picks: (result.bonusCombinations?.bonus3Picks && Array.isArray(result.bonusCombinations.bonus3Picks) && result.bonusCombinations.bonus3Picks.length > 0)
+          ? result.bonusCombinations.bonus3Picks.map(Number)
+          : (quinteSystem?.targetedStrategies.quinteBonus3?.ticket || quinteSystem?.coreTop5.map(h => h.numPmu) || result.prediction.slice(0, 3)),
+        bonus4Picks: (result.bonusCombinations?.bonus4Picks && Array.isArray(result.bonusCombinations.bonus4Picks) && result.bonusCombinations.bonus4Picks.length > 0)
+          ? result.bonusCombinations.bonus4Picks.map(Number)
+          : (quinteSystem?.targetedStrategies.quinteBonus4?.ticket || quinteSystem?.coreTop5.map(h => h.numPmu) || result.prediction.slice(0, 4)),
+        bonus5Picks: (result.bonusCombinations?.bonus5Picks && Array.isArray(result.bonusCombinations.bonus5Picks) && result.bonusCombinations.bonus5Picks.length > 0)
+          ? result.bonusCombinations.bonus5Picks.map(Number)
+          : (quinteSystem?.targetedStrategies.quinteBonus5?.ticket || quinteSystem?.extendedTop7.slice(0, 6).map(h => h.numPmu) || result.prediction.slice(0, 5)),
+        weightedCombinations: (result.bonusCombinations?.weightedCombinations && Array.isArray(result.bonusCombinations.weightedCombinations))
+          ? result.bonusCombinations.weightedCombinations
+          : (quinteSystem ? [
+              {
+                label: "توليفة Quinté+ Désordre & Bonus 5 المرجحة",
+                combination: quinteSystem.targetedStrategies.quinteBonus5?.ticket || quinteSystem.extendedTop7.slice(0, 6).map(h => h.numPmu),
+                tierceOrdre: quinteSystem.targetedStrategies.tierceOrdre.ticket,
+                confidence: quinteSystem.overallDesordreConfidence,
+                evPotential: "عائد مرتفع (High EV)",
+                type: "BONUS_5"
+              },
+              {
+                label: "توليفة Quarté+ Bonus 3 التأمينية",
+                combination: quinteSystem.targetedStrategies.quarteBonus3.ticket,
+                tierceOrdre: quinteSystem.targetedStrategies.tierceOrdre.ticket,
+                confidence: quinteSystem.targetedStrategies.quarteBonus3.confidence,
+                evPotential: "عائد متوازن (Optimal)",
+                type: "BONUS_3"
+              }
+            ] : [])
+      };
+
       const record: StoredPredictionRecord = {
         id: storageKey,
         date,
@@ -580,12 +484,12 @@ export default function RaceDetail() {
         savedAt: Date.now(),
         lastUpdated: Date.now(),
         prediction: result.prediction,
-        goldenBase: result.goldenBase,
-        bases: result.bases,
-        associes: result.associes,
-        tocardSauveur: result.tocardSauveur,
-        quinteDesordrePicks: result.quinteDesordrePicks,
-        desordreConfidenceScore: result.desordreConfidenceScore,
+        goldenBase: calculatedGoldenBase,
+        bases: calculatedBases,
+        associes: calculatedAssocies,
+        tocardSauveur: calculatedTocardSauveur,
+        quinteDesordrePicks: calculatedQuinteDesordre,
+        desordreConfidenceScore: calculatedConfidence,
         analysis: result.analysis,
         tacticalAnalysis: result.tacticalAnalysis,
         quantitativeAnalysis: result.quantitativeAnalysis || `المؤشرات الكمية المعتمدة تدمج تصنيفات السرعة والمسار ومصفوفة الاحتمالات البايزية لحسم المراكز الخمسة.`,
@@ -620,29 +524,7 @@ export default function RaceDetail() {
           energyReservePct: m.fatigueMetrics?.energyReservePct,
           riskRewardRatio: m.riskRewardMetrics?.ratio,
         })) : undefined),
-        bonusCombinations: result.bonusCombinations || (quinteSystem ? {
-          bonus3Picks: quinteSystem.targetedStrategies.quinteBonus3?.ticket || quinteSystem.coreTop5.map(h => h.numPmu),
-          bonus4Picks: quinteSystem.targetedStrategies.quinteBonus4?.ticket || quinteSystem.coreTop5.map(h => h.numPmu),
-          bonus5Picks: quinteSystem.targetedStrategies.quinteBonus5?.ticket || quinteSystem.extendedTop7.slice(0, 6).map(h => h.numPmu),
-          weightedCombinations: [
-            {
-              label: "توليفة Quinté+ Désordre & Bonus 5 المرجحة",
-              combination: quinteSystem.targetedStrategies.quinteBonus5?.ticket || quinteSystem.extendedTop7.slice(0, 6).map(h => h.numPmu),
-              tierceOrdre: quinteSystem.targetedStrategies.tierceOrdre.ticket,
-              confidence: quinteSystem.overallDesordreConfidence,
-              evPotential: "عائد مرتفع (High EV)",
-              type: "BONUS_5"
-            },
-            {
-              label: "توليفة Quarté+ Bonus 3 التأمينية",
-              combination: quinteSystem.targetedStrategies.quarteBonus3.ticket,
-              tierceOrdre: quinteSystem.targetedStrategies.tierceOrdre.ticket,
-              confidence: quinteSystem.targetedStrategies.quarteBonus3.confidence,
-              evPotential: "عائد متوازن (Optimal)",
-              type: "BONUS_3"
-            }
-          ]
-        } : undefined),
+        bonusCombinations: calculatedBonusCombinations,
         syntheseUltime: result.syntheseUltime || quinteSystem?.syntheseUltime,
         profitMaximizerInsights: result.profitMaximizerInsights || quinteSystem?.profitMaximizerInsights,
         targetedStrategies: result.targetedStrategies || quinteSystem?.targetedStrategies,
@@ -684,11 +566,11 @@ export default function RaceDetail() {
           lastUpdated: Date.now(),
           analysis: `تحليل تكتيكي مسند لسباق ${data.info.libelle} (${data.info.distance}م): تم اعتماد النمذجة البايزية المتقدمة لتقليص فجوة التوقعات بين الخيول المفضلة والأوتسايدر وتثبيت الركيزة الذهبية N°${quinteSystem.unbreakableBases[0]?.numPmu || tacticalScenario?.goldenBase?.numPmu} مع تأمين جوائز الكينتي ديزورد والـ Bonus.`,
           prediction: quinteSystem.coreTop5.map(h => h.numPmu),
-          goldenBase: quinteSystem.unbreakableBases[0]?.numPmu || tacticalScenario?.goldenBase?.numPmu,
+          goldenBase: quinteSystem.unbreakableBases[0]?.numPmu || tacticalScenario?.goldenBase?.numPmu || quinteSystem.coreTop5[0]?.numPmu,
           quinteDesordreAnalysis: `لضمان دخول 5 خيول في الكينتي ديزورد، تم تثبيت الركائز (${quinteSystem.unbreakableBases.map(b => b.numPmu).join(", ")}) وتطويق المراكز المتبقية بالخيول المرافقة والتوكار المنقذ في صيغة Champ Réduit مع المتغير X لتغطية جوائز Bonus 5 و Bonus 4 و Bonus 3.`,
           bases: quinteSystem.unbreakableBases.map(b => b.numPmu),
           associes: quinteSystem.primeAssociés.map(a => a.numPmu),
-          tocardSauveur: quinteSystem.tocardSauveur ? quinteSystem.tocardSauveur.numPmu : undefined,
+          tocardSauveur: quinteSystem.tocardSauveur ? quinteSystem.tocardSauveur.numPmu : null,
           quinteDesordrePicks: quinteSystem.extendedTop7.map(h => h.numPmu),
           desordreConfidenceScore: quinteSystem.overallDesordreConfidence,
           tacticalAnalysis: `سيناريو الشوط يتجه نحو "${tacticalScenario?.paceTitle || "سباق سريع"}". تم إخضاع المسار لتحليل ديناميكي للمنعطفات والخط المستقيم (Dynamic Pathfinding): الخيول ذات تصفيف الحوافر D4 تمتلك الأفضلية الحركية للتموضع المثالي على الحبل وحسم السرعة عند مدخل الخط المستقيم الأخير.`,
@@ -723,7 +605,7 @@ export default function RaceDetail() {
             energyReservePct: m.fatigueMetrics?.energyReservePct,
             riskRewardRatio: m.riskRewardMetrics?.ratio,
           })) : undefined,
-          bonusCombinations: quinteSystem ? {
+          bonusCombinations: {
             bonus3Picks: quinteSystem.targetedStrategies.quinteBonus3?.ticket || quinteSystem.coreTop5.map(h => h.numPmu),
             bonus4Picks: quinteSystem.targetedStrategies.quinteBonus4?.ticket || quinteSystem.coreTop5.map(h => h.numPmu),
             bonus5Picks: quinteSystem.targetedStrategies.quinteBonus5?.ticket || quinteSystem.extendedTop7.slice(0, 6).map(h => h.numPmu),
@@ -745,7 +627,7 @@ export default function RaceDetail() {
                 type: "BONUS_3"
               }
             ]
-          } : undefined,
+          },
           syntheseUltime: quinteSystem.syntheseUltime,
           profitMaximizerInsights: quinteSystem.profitMaximizerInsights,
           targetedStrategies: quinteSystem.targetedStrategies,
@@ -1529,177 +1411,6 @@ export default function RaceDetail() {
                       </div>
                     );
                   })()}
-
-                  {/* Dynamic Weighted Bonus Combinations Monitor (نظام رصد توليفات البونص المرجحة الملونة) */}
-                  {calculatedWeightedBonusCards && calculatedWeightedBonusCards.length > 0 && (
-                    <div className="mt-6 pt-5 border-t border-white/10 space-y-3.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <h4 className="font-black text-sm text-emerald-300 flex items-center gap-2">
-                            <ShieldAlert className="w-4 h-4 text-emerald-400" />
-                            <span>نظام رصد توليفات البونص المرجحة (Bonus 3 & 4 Dynamic Monitor):</span>
-                          </h4>
-                          <p className="text-[11px] text-neutral-300 mt-0.5">
-                            توليفات محسوبة باحتمالات كمية مباشرة لتأمين أرباح Bonus 4 و Bonus 3 وحماية رأس المال في حال لم يكتمل الرهان الأكبر.
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0 text-[10px] bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg text-neutral-200">
-                          <Coins className="w-3.5 h-3.5 text-amber-300" />
-                          <span>تلوين ديناميكي حسب نسبة تحقق البونص</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                        {calculatedWeightedBonusCards.map((bonusTicket) => {
-                          const isCopied = copiedBonusTicketId === bonusTicket.id;
-
-                          return (
-                            <div
-                              key={bonusTicket.id}
-                              className={cn(
-                                "rounded-2xl border p-4 flex flex-col justify-between transition-all duration-300 relative overflow-hidden space-y-3",
-                                bonusTicket.theme.containerClass
-                              )}
-                            >
-                              {/* Top Banner: Badge & Copy Button */}
-                              <div className="flex items-center justify-between gap-2 border-b pb-2.5 border-white/10">
-                                <div className="flex items-center gap-2">
-                                  <span className={cn("text-[10px] px-2.5 py-0.5 rounded-md border font-black", bonusTicket.theme.badgeClass)}>
-                                    {bonusTicket.theme.badgeText}
-                                  </span>
-                                  <span className="text-[10px] font-mono text-neutral-300 bg-black/40 px-2 py-0.5 rounded">
-                                    {bonusTicket.targetBet}
-                                  </span>
-                                </div>
-
-                                <button
-                                  onClick={() => handleCopyBonusTicket(bonusTicket.id, bonusTicket.horses)}
-                                  className="flex items-center gap-1 px-2.5 py-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-lg text-[11px] font-bold border border-white/15 transition-all shadow-sm"
-                                  title="نسخ أرقام التذكرة"
-                                >
-                                  {isCopied ? (
-                                    <>
-                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                      <span className="text-emerald-300">تم النسخ!</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="w-3.5 h-3.5 text-neutral-300" />
-                                      <span>نسخ التذكرة</span>
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-
-                              {/* Title & Subtitle */}
-                              <div>
-                                <h5 className="font-black text-sm text-white tracking-wide">
-                                  {bonusTicket.title}
-                                </h5>
-                                <p className="text-[11px] text-neutral-300 mt-0.5 leading-snug">
-                                  {bonusTicket.subtitle}
-                                </p>
-                              </div>
-
-                              {/* Horse Number Pills with Details */}
-                              <div className="bg-black/40 border border-white/10 rounded-xl p-2.5 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-bold text-neutral-400">خيول التذكرة الخمسة:</span>
-                                  <span className="text-[10px] font-mono text-amber-300 font-bold">
-                                    {bonusTicket.horses.join(" - ")}
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  {bonusTicket.horses.map((num) => {
-                                    const p = data.participants.find(x => x.numPmu === num);
-                                    const m = analyzedParticipants.find(x => x.numPmu === num);
-                                    const ferrage = m?.ferrageCode || "D0";
-                                    const isGolden = num === activeGoldenBase;
-
-                                    return (
-                                      <div
-                                        key={num}
-                                        className="flex items-center gap-1.5 bg-white/10 border border-white/10 px-2 py-1 rounded-lg hover:bg-white/15 transition-colors"
-                                      >
-                                        <span className={cn(
-                                          "w-6 h-6 rounded-md font-mono font-black text-xs flex items-center justify-center shrink-0",
-                                          bonusTicket.theme.pillBg
-                                        )}>
-                                          {num}
-                                        </span>
-                                        <div className="text-right">
-                                          <div className="text-[10px] font-bold text-white max-w-[85px] truncate">
-                                            {p?.nom || `خيل ${num}`}
-                                          </div>
-                                          <div className="flex items-center gap-1 text-[9px] text-neutral-400">
-                                            {ferrage && ferrage !== "D0" && (
-                                              <span className={ferrage === "D4" ? "text-emerald-400 font-bold" : "text-neutral-300"}>
-                                                {ferrage}
-                                              </span>
-                                            )}
-                                            {isGolden && <span className="text-amber-300 font-black">⭐Base</span>}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              {/* Probabilities and Safeguard Gauges */}
-                              <div className="grid grid-cols-2 gap-2 pt-1">
-                                {/* Bonus 4 Gauge */}
-                                <div className="bg-black/30 border border-white/10 rounded-xl p-2 space-y-1">
-                                  <div className="flex items-center justify-between text-[10px]">
-                                    <span className="text-neutral-300 font-bold">احتمالية Bonus 4:</span>
-                                    <span className={cn("font-mono font-black text-xs", bonusTicket.theme.probNumberColor)}>
-                                      {bonusTicket.bonus4Prob}%
-                                    </span>
-                                  </div>
-                                  <div className="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                      className={cn("h-full rounded-full transition-all duration-500", 
-                                        bonusTicket.bonus4Prob >= 75 ? "bg-emerald-400" : bonusTicket.bonus4Prob >= 60 ? "bg-amber-400" : "bg-fuchsia-400"
-                                      )}
-                                      style={{ width: `${Math.min(100, bonusTicket.bonus4Prob)}%` }}
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Bonus 3 Gauge */}
-                                <div className="bg-black/30 border border-white/10 rounded-xl p-2 space-y-1">
-                                  <div className="flex items-center justify-between text-[10px]">
-                                    <span className="text-neutral-300 font-bold">احتمالية Bonus 3:</span>
-                                    <span className="font-mono font-black text-xs text-emerald-300">
-                                      {bonusTicket.bonus3Prob}%
-                                    </span>
-                                  </div>
-                                  <div className="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                      className="h-full rounded-full bg-emerald-400 transition-all duration-500"
-                                      style={{ width: `${Math.min(100, bonusTicket.bonus3Prob)}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Tactical Safeguard Note & EV */}
-                              <div className="pt-2 border-t border-white/10 space-y-1.5 text-[10px]">
-                                <div className="flex items-start gap-1 text-neutral-200 leading-snug">
-                                  <span className="text-amber-300 font-bold shrink-0">🛡️ الأثر التكتيكي:</span>
-                                  <span>{bonusTicket.tacticalAdvantage}</span>
-                                </div>
-                                <div className="flex items-center justify-between text-neutral-300 pt-1">
-                                  <span>تغطية البونص عند تعثر الـ 5: <strong className="text-emerald-300 font-mono">{bonusTicket.bonusCoverageIfIncomplete}%</strong></span>
-                                  <span className="font-mono text-amber-300 font-bold">{bonusTicket.recommendedFlexiStake}</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {isFinished && hasArrival && (() => {
@@ -2209,6 +1920,8 @@ export default function RaceDetail() {
             raceInfo={data.info}
             scenario={tacticalScenario}
             prediction={prediction}
+            onGeneratePrediction={generatePrediction}
+            predictionLoading={predictionLoading}
           />
         ) : activeTab === "simulator" ? (
           <>
