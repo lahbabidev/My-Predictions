@@ -1,0 +1,6 @@
+{
+  "name": "توقعات سباق الخيول",
+  "description": "منصة لتحليل وتوقع ومقارنة نتائج سباقات الخيول (Tiercé, Quarté, Quinté+) بناءً على بيانات حقيقية مباشرة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
