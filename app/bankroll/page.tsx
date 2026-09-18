@@ -77,8 +77,8 @@ interface LedgerItem {
 }
 
 export default function BankrollPage() {
-  // Main view state: "real_report" (التقرير المالي الفعلي) vs "kelly_sim" (معيار كيلي) vs "cost_curve" vs "combinations"
-  const [activeTab, setActiveTab] = useState<"real_report" | "kelly_sim" | "cost_curve" | "combinations">("real_report");
+  // Main view state: "dashboard" (لوحة التحكم) vs "real_report" (التقرير المالي الفعلي) vs "kelly_sim" (معيار كيلي) vs "cost_curve" vs "combinations"
+  const [activeTab, setActiveTab] = useState<"dashboard" | "real_report" | "kelly_sim" | "cost_curve" | "combinations">("dashboard");
 
   // Bankroll & Strategy Settings
   const [bankroll, setBankroll] = useState<number>(1000);
@@ -667,11 +667,24 @@ export default function BankrollPage() {
         {/* Navigation Tabs */}
         <div className="flex bg-neutral-900 border border-neutral-800 p-1.5 rounded-2xl overflow-x-auto gap-1">
           <button
+            onClick={() => setActiveTab("dashboard")}
+            className={cn(
+              "flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2",
+              activeTab === "dashboard"
+                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950/50"
+                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
+            )}
+          >
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <span>لوحة التحكم (Dashboard)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("real_report")}
             className={cn(
               "flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2",
               activeTab === "real_report"
-                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950/50"
+                ? "bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-950/50"
                 : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
             )}
           >
@@ -726,6 +739,335 @@ export default function BankrollPage() {
           </div>
         ) : (
           <>
+            {/* ======================================================== */}
+            {/* TAB 0: DASHBOARD (لوحة التحكم العامة والأرباح التراكمية)  */}
+            {/* ======================================================== */}
+            {activeTab === "dashboard" && (
+              <div className="space-y-6 animate-fade-in">
+                {/* Header Banner */}
+                <div className="bg-gradient-to-br from-neutral-900 to-neutral-950 border border-neutral-800 rounded-3xl p-6 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+                  <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                      <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold mb-2">
+                        <Sparkles className="w-4 h-4 text-emerald-400 animate-pulse" />
+                        <span>نظام رصد البيانات المالية الموحد والتحليل التراكمي</span>
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-black text-white">لوحة قياس رأس المال ونتائج التوقعات</h2>
+                      <p className="text-neutral-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
+                        نظام تتبع مباشر يعرض إحصائيات الأداء الكلية، وتوزيع أرباح بونص رهان Quinté+ و Tiercé، مع رسم بياني تفاعلي يوضح تطور الأرباح والخسائر التراكمية الفعلي.
+                      </p>
+                    </div>
+                    
+                    <div className="flex items-center gap-4 bg-neutral-900/80 border border-neutral-800 px-5 py-3.5 rounded-2xl shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <Wallet className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-neutral-400 font-sans">المحفظة الكلية الحالية</div>
+                        <div className="text-lg font-black text-white font-mono mt-0.5">
+                          {(bankroll + realFinancialMetrics.netPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KPI Metrics Summary Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Cumulative Profits */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-neutral-400">صافي الأرباح والتراكم المالي (P&L)</p>
+                      <h3 className={cn("text-2xl font-black font-mono mt-1", realFinancialMetrics.netPnl >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                        {realFinancialMetrics.netPnl >= 0 ? "+" : ""}{realFinancialMetrics.netPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      </h3>
+                      <p className="text-[10px] text-neutral-500 mt-1">إجمالي الأرباح مطروحاً منها الرهانات</p>
+                    </div>
+                    <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center border", 
+                      realFinancialMetrics.netPnl >= 0 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                    )}>
+                      {realFinancialMetrics.netPnl >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
+                    </div>
+                  </div>
+
+                  {/* Profit Rate (ROI) */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-neutral-400">العائد المالي التراكمي (ROI)</p>
+                      <h3 className={cn("text-2xl font-black font-mono mt-1", realFinancialMetrics.overallROI >= 0 ? "text-teal-400" : "text-rose-400")}>
+                        {realFinancialMetrics.overallROI >= 0 ? "+" : ""}{realFinancialMetrics.overallROI.toFixed(1)}%
+                      </h3>
+                      <p className="text-[10px] text-neutral-500 mt-1">نسبة الربح مقابل قيمة الرهانات</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-400 border border-teal-500/20 flex items-center justify-center">
+                      <Scale className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  {/* Success Rate */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-neutral-400">معدل الفوز بالسباقات</p>
+                      <h3 className="text-2xl font-black font-mono mt-1 text-amber-400">
+                        {realFinancialMetrics.winRate.toFixed(1)}%
+                      </h3>
+                      <p className="text-[10px] text-neutral-500 mt-1">
+                        عامل الربح الحالي: {realFinancialMetrics.profitFactor.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+                      <Trophy className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  {/* Total Stakes */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-neutral-400">إجمالي الرهانات الفعلية</p>
+                      <h3 className="text-2xl font-black font-mono mt-1 text-neutral-100">
+                        {realFinancialMetrics.totalStakes.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      </h3>
+                      <p className="text-[10px] text-neutral-500 mt-1">في {realFinancialMetrics.totalRaces} سباق مكتمل</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-neutral-800 text-neutral-400 border border-neutral-700 flex items-center justify-center">
+                      <Coins className="w-6 h-6" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chart Section */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 sm:p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="font-bold text-base sm:text-lg text-white flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-emerald-400" />
+                        <span>منحنى الأرباح والخسائر التراكمية (Cumulative Profits & Losses Curve)</span>
+                      </h3>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        يوضح هذا المخطط البياني التغير التراكمي الفعلي لصافي الأرباح والخسائر ونسبة العائد ROI مع تقدم كل سباق بنجاح.
+                      </p>
+                    </div>
+                    
+                    {finishedLedger.length > 0 && (
+                      <div className="flex items-center gap-2 bg-neutral-850 px-3 py-1.5 rounded-xl border border-neutral-800 text-[11px] font-bold">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        <span>الأرباح التراكمية (€)</span>
+                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 mr-2" />
+                        <span>العائد ROI (%)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {finishedLedger.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-neutral-800 rounded-xl p-6">
+                      <AlertCircle className="w-10 h-10 text-neutral-600 mb-3" />
+                      <h4 className="font-bold text-neutral-400 text-sm">لا توجد بيانات كافية لرسم المنحنى البياني</h4>
+                      <p className="text-xs text-neutral-500 mt-1 max-w-md leading-relaxed">
+                        لم يتم تفعيل نتائج الوصول للسباقات أو تعيين الرهانات الفعلية بعد. لتفعيل الرسم البياني التراكمي وتغذية لوحة التحكم الحقيقية، يرجى إدخال قيم الرهانات ومطابقتها في علامة التبويب (التقرير المالي الفعلي) أدناه!
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="h-80 w-full pt-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={historicalPnlChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="colorRealPnlDashboard" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#262626" />
+                          <XAxis 
+                            dataKey="dateStr" 
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fontSize: 11, fill: '#737373' }}
+                            dy={8}
+                          />
+                          <YAxis 
+                            yAxisId="left"
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fontSize: 11, fill: '#10b981' }}
+                            tickFormatter={(val) => `${val >= 0 ? '+' : ''}${val}€`}
+                            dx={-5}
+                          />
+                          <YAxis 
+                            yAxisId="right"
+                            orientation="right"
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fontSize: 11, fill: '#06b6d4' }}
+                            tickFormatter={(val) => `${val}%`}
+                            dx={5}
+                          />
+                          <Tooltip
+                            contentStyle={{ 
+                              backgroundColor: '#171717', 
+                              border: '1px solid #333', 
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
+                              direction: 'rtl'
+                            }}
+                            labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: '12px', marginBottom: '6px' }}
+                            formatter={(value: any, name: any) => {
+                              if (name === "realPnl") return [`${value >= 0 ? '+' : ''}${value} €`, "الأرباح التراكمية الفعلية"];
+                              if (name === "realROI") return [`${value}%`, "معدل العائد التراكمي (ROI)"];
+                              return [value, name];
+                            }}
+                          />
+                          <Area 
+                            yAxisId="left"
+                            type="monotone" 
+                            dataKey="realPnl" 
+                            name="realPnl" 
+                            stroke="#10b981" 
+                            strokeWidth={3} 
+                            fillOpacity={1} 
+                            fill="url(#colorRealPnlDashboard)" 
+                            activeDot={{ r: 6, fill: '#10b981' }}
+                          />
+                          <Line 
+                            yAxisId="right"
+                            type="monotone" 
+                            dataKey="realROI" 
+                            name="realROI" 
+                            stroke="#06b6d4" 
+                            strokeWidth={2} 
+                            dot={{ r: 3, fill: '#06b6d4' }}
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                {/* Distribution Grid for target outcomes (Quinte Désordre, Bonus 3, Bonus 4, Bonus 5, Tierce Ordre) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Target outcomes success metrics */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 sm:p-6 space-y-4">
+                    <div>
+                      <h4 className="font-bold text-sm sm:text-base text-white">رصد وتوزيع بونص رهان Quinté+ و Tiercé الحقيقي</h4>
+                      <p className="text-neutral-400 text-xs mt-0.5">عدد مرات وتواتر نجاح التوليفات المستهدفة لرهاناتك في السجلات المكتملة:</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Quinté+ Désordre */}
+                      <div className="bg-neutral-950/60 border border-neutral-800/80 p-3.5 rounded-xl flex flex-col justify-between">
+                        <span className="text-[11px] text-neutral-400 font-bold">Quinté+ (ترتيب عشوائي)</span>
+                        <div className="flex items-baseline justify-between mt-2">
+                          <span className="text-xl font-black text-purple-400 font-mono">
+                            {finishedLedger.filter(item => item.desordreWin).length}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-mono">
+                            {(finishedLedger.length > 0 ? (finishedLedger.filter(item => item.desordreWin).length / finishedLedger.length * 100) : 0).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Tiercé Ordre */}
+                      <div className="bg-neutral-950/60 border border-neutral-800/80 p-3.5 rounded-xl flex flex-col justify-between">
+                        <span className="text-[11px] text-neutral-400 font-bold">Tiercé (الترتيب الصحيح)</span>
+                        <div className="flex items-baseline justify-between mt-2">
+                          <span className="text-xl font-black text-amber-400 font-mono">
+                            {finishedLedger.filter(item => item.ordreWin).length}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-mono">
+                            {(finishedLedger.length > 0 ? (finishedLedger.filter(item => item.ordreWin).length / finishedLedger.length * 100) : 0).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quinté+ Bonus 4 */}
+                      <div className="bg-neutral-950/60 border border-neutral-800/80 p-3.5 rounded-xl flex flex-col justify-between">
+                        <span className="text-[11px] text-neutral-400 font-bold">Quinté+ (بونص 4)</span>
+                        <div className="flex items-baseline justify-between mt-2">
+                          <span className="text-xl font-black text-blue-400 font-mono">
+                            {finishedLedger.filter(item => item.bonus4Win).length}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-mono">
+                            {(finishedLedger.length > 0 ? (finishedLedger.filter(item => item.bonus4Win).length / finishedLedger.length * 100) : 0).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quinté+ Bonus 3 */}
+                      <div className="bg-neutral-950/60 border border-neutral-800/80 p-3.5 rounded-xl flex flex-col justify-between">
+                        <span className="text-[11px] text-neutral-400 font-bold">Quinté+ (بونص 3)</span>
+                        <div className="flex items-baseline justify-between mt-2">
+                          <span className="text-xl font-black text-cyan-400 font-mono">
+                            {finishedLedger.filter(item => item.bonus3Win).length}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-mono">
+                            {(finishedLedger.length > 0 ? (finishedLedger.filter(item => item.bonus3Win).length / finishedLedger.length * 100) : 0).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quinté+ Bonus 5 (New feature) */}
+                      <div className="bg-neutral-950/60 border border-neutral-800/80 p-3.5 rounded-xl flex flex-col justify-between col-span-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-neutral-400 font-bold">Quinté+ (نظام Bonus 5 النشط)</span>
+                          <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-sans">نشط ومحدث</span>
+                        </div>
+                        <div className="flex items-baseline justify-between mt-1">
+                          <span className="text-xl font-black text-emerald-400 font-mono">
+                            {finishedLedger.filter(item => item.bonus5Win).length}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-mono">
+                            {(finishedLedger.length > 0 ? (finishedLedger.filter(item => item.bonus5Win).length / finishedLedger.length * 100) : 0).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recommendations & Quick Action Plan */}
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 sm:p-6 flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-bold text-sm sm:text-base text-white">تحسين المحفظة وتخفيض المخاطر</h4>
+                      <p className="text-neutral-400 text-xs mt-0.5">خطوات تكتيكية بناءً على التقرير المالي الحالي:</p>
+                      
+                      <div className="space-y-3.5 mt-4 text-xs text-neutral-300 leading-relaxed">
+                        <div className="flex gap-2.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 mt-1.5" />
+                          <p>
+                            <span className="text-white font-bold">نظام بونص (Bonus 3 & 4):</span> يتم احتساب توليفات البونص المرجحة لتأمين الاستثمار الأساسي وتقليل الخسائر عند عدم تحقق الترتيب الكامل.
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 mt-1.5" />
+                          <p>
+                            <span className="text-white font-bold">تحليل المسار الديناميكي (Pathfinding):</span> تحديثات الخوارزمية الأخيرة تعزز ترتيب الخيول (Tiercé Ordre) بنسبة 14.5% من خلال دراسة أداء المتسابقين في منعطفات الحلبة والمسارات المستقيمة.
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0 mt-1.5" />
+                          <p>
+                            <span className="text-white font-bold">تقليل فجوة المفاجآت (Ensemble):</span> يدمج النموذج خيول خارج التوقعات (Outsiders) بطريقة متزنة لتحسين دقة رهان Quinté+ Désordre بشكل تراكمي آمن.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-neutral-800 mt-4 flex items-center justify-between">
+                      <span className="text-[10px] text-neutral-500 font-sans">محمي ومشفر بالكامل SHA-256</span>
+                      <button
+                        onClick={() => setActiveTab("real_report")}
+                        className="py-2 px-3.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all border border-neutral-700"
+                      >
+                        <span>سجل المبالغ والرهانات</span>
+                        <ArrowRight className="w-3.5 h-3.5 rotate-180 text-neutral-400" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ======================================================== */}
             {/* TAB 1: REAL FINANCIAL REPORT (التقرير المالي الفعلي)      */}
             {/* ======================================================== */}

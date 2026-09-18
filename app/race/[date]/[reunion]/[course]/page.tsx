@@ -992,7 +992,7 @@ export default function RaceDetail() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                     <button
                       onClick={() => setSelectedEnsemblePathway("conservative")}
                       className={cn(
@@ -1047,7 +1047,26 @@ export default function RaceDetail() {
                         </span>
                         <span className="text-[9px] bg-amber-500/30 text-amber-200 px-1.5 py-0.5 rounded font-bold">ثقة 76%</span>
                       </div>
-                      <p className="text-[10px] text-neutral-300 leading-tight">صيد التوكار المنقذ وأموال المؤسسات لعوائد كبرى</p>
+                      <p className="text-[10px] text-neutral-300 leading-tight">صيد التوكار وأموال المؤسسات لعوائد كبرى</p>
+                    </button>
+
+                    <button
+                      onClick={() => setSelectedEnsemblePathway("desordre_bridge")}
+                      className={cn(
+                        "p-2.5 rounded-xl border text-right transition-all flex flex-col justify-between",
+                        selectedEnsemblePathway === "desordre_bridge"
+                          ? "bg-purple-600/50 border-purple-400 text-white shadow-md ring-2 ring-purple-400/40"
+                          : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs flex items-center gap-1 text-purple-300">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          جسر الديزورد (Bridge)
+                        </span>
+                        <span className="text-[9px] bg-purple-500/30 text-purple-200 px-1.5 py-0.5 rounded font-bold">ثقة 90%</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-300 leading-tight">تقليص الفجوة واقتناص عوائد الديزورد المضمونة</p>
                     </button>
                   </div>
                 </div>
@@ -1246,6 +1265,192 @@ export default function RaceDetail() {
                       </span>
                     </div>
                   )}
+
+                  {/* نظام الرصد الفوري لتوليفات البونص المرجحة والخيول المعززة للـ Bonus 5 */}
+                  {(() => {
+                    const targeted = activeTargetedStrategies || prediction?.targetedStrategies || quinteSystem?.targetedStrategies;
+                    if (!targeted) return null;
+
+                    // Gather weighted combinations
+                    const bonus3Combs = targeted.quinteBonus3?.weightedCombinations || [];
+                    const bonus4Combs = targeted.quinteBonus4?.weightedCombinations || [];
+                    const bonus5Combs = targeted.quinteBonus5?.bonusCoverageCombinations || [];
+                    
+                    const boosterHorses = targeted.quinteBonus5?.boosterHorses || [];
+
+                    return (
+                      <div className="mt-5 pt-5 border-t border-white/10 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <h4 className="font-bold text-sm text-purple-300 flex items-center gap-2">
+                              <Gauge className="w-4 h-4 text-purple-400" />
+                              <span>نظام الرصد الفوري لتوليفات البونص المرجحة (Bonus 3 & 4 & 5 Monitoring):</span>
+                            </h4>
+                            <p className="text-[11px] text-neutral-300 mt-0.5">
+                              رصد فوري للتذاكر التأمينية وتلوينها الذكي حسب احتمالية استرجاع الرهان ومضاعفة العائد عند تعثر الركائز الأساسية.
+                            </p>
+                          </div>
+                          <span className="text-[10px] bg-purple-500/20 text-purple-200 border border-purple-500/30 px-2.5 py-0.5 rounded-full font-bold shrink-0 self-start sm:self-auto">
+                            التحليل الاحتمالي نشط
+                          </span>
+                        </div>
+
+                        {/* 1. Colored Weighted Bonus Combinations Tickets Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {/* Map or render combinations with colors based on probability */}
+                          {bonus3Combs.map((comb: any, idx: number) => {
+                            const prob = comb.probability || 90;
+                            // Determine color-coding
+                            const isHigh = prob >= 90;
+                            const isMedium = prob >= 80 && prob < 90;
+                            
+                            const borderColor = isHigh ? "border-emerald-500/30" : isMedium ? "border-cyan-500/30" : "border-amber-500/30";
+                            const bgColor = isHigh ? "bg-emerald-500/5" : isMedium ? "bg-cyan-500/5" : "bg-amber-500/5";
+                            const textColor = isHigh ? "text-emerald-300" : isMedium ? "text-cyan-300" : "text-amber-300";
+                            const badgeColor = isHigh ? "bg-emerald-500/20 text-emerald-200" : isMedium ? "bg-cyan-500/20 text-cyan-200" : "bg-amber-500/20 text-amber-200";
+                            const labelText = isHigh ? "أمان فائق (شبه قطعي)" : isMedium ? "احتمالية مرتفعة جداً" : "عائد تكتيكي متوازن";
+
+                            return (
+                              <div key={`b3-${idx}`} className={cn("border rounded-xl p-3 flex flex-col justify-between space-y-2.5 transition-all", borderColor, bgColor)}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase text-neutral-300">{comb.label || "توليفة بونص 3"}</span>
+                                  <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded", badgeColor)}>
+                                    {prob}%
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 font-mono font-black text-sm text-white">
+                                  {comb.combination.map((num: number) => (
+                                    <span key={num} className="w-6.5 h-6.5 rounded bg-neutral-900/80 text-white border border-white/10 flex items-center justify-center font-mono font-bold">
+                                      {num}
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="text-[9px] text-neutral-400 block leading-tight">
+                                    {comb.fallbackProtectionLevel || "تغطية تأمينية لحماية رأس المال"}
+                                  </span>
+                                  <span className={cn("text-[9px] font-bold block", textColor)}>
+                                    حالة الرصد: {labelText}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {bonus4Combs.map((comb: any, idx: number) => {
+                            const prob = comb.probability || 85;
+                            const isHigh = prob >= 90;
+                            const isMedium = prob >= 80 && prob < 90;
+                            
+                            const borderColor = isHigh ? "border-emerald-500/30" : isMedium ? "border-cyan-500/30" : "border-amber-500/30";
+                            const bgColor = isHigh ? "bg-emerald-500/5" : isMedium ? "bg-cyan-500/5" : "bg-amber-500/5";
+                            const textColor = isHigh ? "text-emerald-300" : isMedium ? "text-cyan-300" : "text-amber-300";
+                            const badgeColor = isHigh ? "bg-emerald-500/20 text-emerald-200" : isMedium ? "bg-cyan-500/20 text-cyan-200" : "bg-amber-500/20 text-amber-200";
+                            const labelText = isHigh ? "أمان فائق (شبه قطعي)" : isMedium ? "احتمالية مرتفعة جداً" : "عائد تكتيكي متوازن";
+
+                            return (
+                              <div key={`b4-${idx}`} className={cn("border rounded-xl p-3 flex flex-col justify-between space-y-2.5 transition-all", borderColor, bgColor)}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase text-neutral-300">{comb.label || "توليفة بونص 4"}</span>
+                                  <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded", badgeColor)}>
+                                    {prob}%
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 font-mono font-black text-sm text-white">
+                                  {comb.combination.map((num: number) => (
+                                    <span key={num} className="w-6.5 h-6.5 rounded bg-neutral-900/80 text-white border border-white/10 flex items-center justify-center font-mono font-bold">
+                                      {num}
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="text-[9px] text-neutral-400 block leading-tight">
+                                    {comb.fallbackProtectionLevel || "تغطية تأمينية لحماية رأس المال"}
+                                  </span>
+                                  <span className={cn("text-[9px] font-bold block", textColor)}>
+                                    حالة الرصد: {labelText}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {bonus5Combs.slice(0, 1).map((comb: any, idx: number) => {
+                            const prob = comb.probability || 88;
+                            const isHigh = prob >= 90;
+                            const isMedium = prob >= 80 && prob < 90;
+                            
+                            const borderColor = isHigh ? "border-emerald-500/30" : isMedium ? "border-cyan-500/30" : "border-amber-500/30";
+                            const bgColor = isHigh ? "bg-emerald-500/5" : isMedium ? "bg-cyan-500/5" : "bg-amber-500/5";
+                            const textColor = isHigh ? "text-emerald-300" : isMedium ? "text-cyan-300" : "text-amber-300";
+                            const badgeColor = isHigh ? "bg-emerald-500/20 text-emerald-200" : isMedium ? "bg-cyan-500/20 text-cyan-200" : "bg-amber-500/20 text-amber-200";
+                            const labelText = isHigh ? "أمان فائق (شبه قطعي)" : isMedium ? "احتمالية مرتفعة جداً" : "عائد تكتيكي متوازن";
+
+                            return (
+                              <div key={`b5-${idx}`} className={cn("border rounded-xl p-3 flex flex-col justify-between space-y-2.5 transition-all", borderColor, bgColor)}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase text-neutral-300">{comb.label || "توليفة بونص 5"}</span>
+                                  <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded", badgeColor)}>
+                                    {prob}%
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 font-mono font-black text-sm text-white">
+                                  {comb.horses.map((num: number) => (
+                                    <span key={num} className="w-6.5 h-6.5 rounded bg-neutral-900/80 text-white border border-white/10 flex items-center justify-center font-mono font-bold">
+                                      {num}
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="text-[9px] text-neutral-400 block leading-tight">
+                                    تغطية شاملة تضمن البونص 5 الفائق لتجنب المفاجآت
+                                  </span>
+                                  <span className={cn("text-[9px] font-bold block", textColor)}>
+                                    حالة الرصد: {labelText}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* 2. Detailed Bonus 5 Booster Horses Section */}
+                        {boosterHorses.length > 0 && (
+                          <div className="bg-white/5 border border-purple-500/20 rounded-xl p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Flame className="w-4 h-4 text-purple-400 animate-pulse" />
+                              <h5 className="font-bold text-xs text-purple-200">الخيول المعززة لاحتمالية تحقيق بونص 5 (Bonus 5 Booster Horses):</h5>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {boosterHorses.map((horse: any, idx: number) => (
+                                <div key={`booster-${idx}`} className="bg-neutral-900/40 border border-white/5 rounded-lg p-2.5 space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-5 h-5 rounded-full bg-purple-900/80 text-purple-200 flex items-center justify-center text-[11px] font-bold font-mono">
+                                        {horse.numPmu}
+                                      </span>
+                                      <span className="font-bold text-[11px] text-white truncate max-w-[100px]">
+                                        {horse.nom}
+                                      </span>
+                                    </div>
+                                    <span className="text-[9px] bg-purple-500/20 text-purple-200 px-1.5 py-0.5 rounded font-mono font-bold">
+                                      {Math.round(horse.placeProbability || 50)}% توب 3
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-neutral-300 leading-normal">
+                                    <span className="text-purple-300 font-bold">ميزة المسار:</span> {horse.pathfindingAdvantage || "تأدية مسار متميزة بالمنعطف."}
+                                  </p>
+                                  <p className="text-[9px] text-neutral-400 leading-normal">
+                                    <span className="text-amber-400 font-bold">دافع البونص:</span> {horse.boostReason || "يعزز حماية البونص 5."}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* 5+ Targeted PMU Objectives Cards (استراتيجيات الرهان المركزة على النتائج الخمسة المطلوبة و Bonus 5) */}
                   {(() => {

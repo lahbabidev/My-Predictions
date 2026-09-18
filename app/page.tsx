@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { PMUProgramme, PMURace, PMUReunion } from "@/types/pmu";
-import { Calendar, ChevronRight, Clock, Trophy, MapPin, ArrowRight, Loader2, SlidersHorizontal, Layers, Award, Bell, Heart, X, Sparkles, Wallet } from "lucide-react";
+import { Calendar, ChevronRight, Clock, Trophy, MapPin, ArrowRight, Loader2, SlidersHorizontal, Layers, Award, Bell, Heart, X, Sparkles, Wallet, Brain, RefreshCw, Activity, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { encryptData, decryptData } from "@/lib/encryption";
 
@@ -33,6 +33,12 @@ export default function Home() {
   // Filters state
   const [betTypeFilter, setBetTypeFilter] = useState<"ALL" | "TIERCE" | "QUARTE" | "QUINTE">("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PROGRAMMEE" | "A_PARTIR" | "ARRIVEE">("ALL");
+
+  // Automated background analytical worker states
+  const [savedPredictions, setSavedPredictions] = useState<Record<string, boolean>>({});
+  const [autoWorkerActive, setAutoWorkerActive] = useState<boolean>(true);
+  const [workerStatus, setWorkerStatus] = useState<string>("جاري تهيئة محلل السجل الفعلي...");
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
   // Watchlist & Alerts state
   const [mounted, setMounted] = useState(false);
@@ -167,6 +173,117 @@ export default function Home() {
       isMounted = false;
     };
   }, [date]);
+
+  // Fetch saved predictions list from server store
+  const fetchSavedPredictions = async () => {
+    try {
+      const res = await fetch("/api/predictions");
+      if (res.ok) {
+        const data = await res.json();
+        const map: Record<string, boolean> = {};
+        if (data.records && Array.isArray(data.records)) {
+          data.records.forEach((rec: any) => {
+            const key = `prediction_${rec.date}_R${rec.reunion.replace("R", "")}_C${rec.course.replace("C", "")}`;
+            map[key] = true;
+          });
+        }
+        setSavedPredictions(map);
+      }
+    } catch (e) {
+      console.error("Failed to fetch saved predictions list:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchSavedPredictions();
+  }, [date]);
+
+  // Automated background predictions queue processor (starts automatically for ALL loaded races)
+  useEffect(() => {
+    if (!programme?.programme?.reunions || !autoWorkerActive) return;
+
+    let isCancelled = false;
+
+    // Collect all races in current program
+    const allRaces: { reunionNum: number; raceNum: number; key: string }[] = [];
+    programme.programme.reunions.forEach((reunion) => {
+      (reunion.courses || []).forEach((race) => {
+        const key = `prediction_${date}_R${reunion.numOfficiel}_C${race.numOrdre}`;
+        allRaces.push({
+          reunionNum: reunion.numOfficiel,
+          raceNum: race.numOrdre,
+          key,
+        });
+      });
+    });
+
+    if (allRaces.length === 0) return;
+
+    // Find races that do not have generated predictions yet
+    const pendingRaces = allRaces.filter((r) => !savedPredictions[r.key]);
+
+    if (pendingRaces.length === 0) {
+      setWorkerStatus("جميع سباقات اليوم تم تحليلها وتوليد توقعاتها تلقائياً ومحفوظة بنجاح! ✅");
+      setSyncProgress({ current: allRaces.length, total: allRaces.length });
+      return;
+    }
+
+    const totalToSync = pendingRaces.length;
+    const completedInitially = allRaces.length - totalToSync;
+    setSyncProgress({ current: completedInitially, total: allRaces.length });
+
+    const runSequence = async () => {
+      setWorkerStatus(`جاري توليد وتحليل ${totalToSync} سباق في الخلفية لملء سجل الإحصائيات... 🧠`);
+
+      for (let i = 0; i < pendingRaces.length; i++) {
+        if (isCancelled) break;
+
+        const target = pendingRaces[i];
+        setWorkerStatus(`توليد وتحليل تكتيكي تلقائي نشط: الاجتماع R${target.reunionNum} السباق C${target.raceNum}... ⚡`);
+
+        try {
+          const raceRes = await fetch(`/api/pmu/race?date=${date}&reunion=R${target.reunionNum}&course=C${target.raceNum}`);
+          if (raceRes.ok) {
+            const raceData = await raceRes.json();
+            if (raceData.info && raceData.participants && raceData.participants.length > 0) {
+              const predictRes = await fetch("/api/ai/predict", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  raceInfo: raceData.info,
+                  participants: raceData.participants,
+                  date,
+                  reunion: `R${target.reunionNum}`,
+                  course: `C${target.raceNum}`,
+                }),
+              });
+
+              if (predictRes.ok) {
+                setSavedPredictions((prev) => ({ ...prev, [target.key]: true }));
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[AutoWorker] Skipped R${target.reunionNum} C${target.raceNum} due to network request info:`, err);
+        }
+
+        setSyncProgress((prev) => ({ ...prev, current: prev.current + 1 }));
+        // Slower delay to guarantee stable API usage
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      if (!isCancelled) {
+        setWorkerStatus("اكتمل التحليل والتوليد التلقائي لجميع السباقات وتم حفظها بسجل التوقعات والإحصائيات! 🏆");
+        fetchSavedPredictions();
+      }
+    };
+
+    runSequence();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [programme, savedPredictions, date, autoWorkerActive]);
 
   const changeDate = (offset: number) => {
     const currentDate = new Date(
@@ -424,6 +541,77 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Auto-Generator Monitor Panel */}
+        {mounted && programme?.programme?.reunions && (
+          <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                  <Brain className={cn("w-5 h-5 text-indigo-600", autoWorkerActive && "animate-pulse")} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-neutral-900 flex items-center gap-2">
+                    <span>المحلل التكتيكي ونظام التوليد الآلي</span>
+                    {autoWorkerActive && (
+                      <span className="flex h-2 w-2 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                    )}
+                  </h2>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    توليد وحفظ توقعات كافة سباقات البرنامج اليومي آلياً وبدون بيانات وهمية.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setAutoWorkerActive(!autoWorkerActive)}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all self-start sm:self-center",
+                  autoWorkerActive 
+                    ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200" 
+                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                )}
+              >
+                {autoWorkerActive ? (
+                  <>
+                    <Activity className="w-3.5 h-3.5 text-red-500 animate-spin" />
+                    <span>إيقاف مؤقت للتحليل الآلي</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>تنشيط التوليد والتحليل الآلي</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="bg-neutral-50 rounded-xl p-3.5 border border-neutral-100 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs font-bold text-neutral-600 gap-1">
+                <div className="flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-indigo-500" />
+                  <span className="text-neutral-700">{workerStatus}</span>
+                </div>
+                <span className="text-indigo-600 shrink-0 font-mono">
+                  {syncProgress.current} / {syncProgress.total} سباق
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-neutral-200 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="h-2 bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-500"
+                  style={{ 
+                    width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` 
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Watchlist Section */}
         {mounted && watchlist.length > 0 && (
           <div className="bg-indigo-900 rounded-2xl p-6 shadow-lg border border-indigo-800 text-white space-y-4 mb-8 overflow-hidden relative">
@@ -552,7 +740,7 @@ export default function Home() {
                             </h3>
                           </div>
                           
-                          <div className="flex items-center gap-4 text-sm text-neutral-500">
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-500 mt-1">
                             <div className="flex items-center gap-1">
                               <Clock className="w-4 h-4" />
                               <span>{formatTime(race.heureDepart)}</span>
@@ -561,6 +749,22 @@ export default function Home() {
                             <span>{race.discipline}</span>
                             <span>•</span>
                             <span>{race.distance}m</span>
+                            {mounted && (
+                              <>
+                                <span>•</span>
+                                {savedPredictions[`prediction_${date}_R${reunion.numOfficiel}_C${race.numOrdre}`] ? (
+                                  <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded border border-indigo-100 flex items-center gap-1">
+                                    <Brain className="w-3 h-3 text-indigo-500" />
+                                    <span>تم التنبؤ والتحليل</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded border border-amber-100 flex items-center gap-1 animate-pulse">
+                                    <Activity className="w-3 h-3 text-amber-500" />
+                                    <span>جاري التوليد...</span>
+                                  </span>
+                                )}
+                              </>
+                            )}
                           </div>
                         </div>
 
